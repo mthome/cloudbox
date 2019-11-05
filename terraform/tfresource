@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# Get just the resource names from one or more tf config files.
+
+grep -h '^resource ' "$@" | cut -d'"' -f2,4 | sed 's/"/./'
