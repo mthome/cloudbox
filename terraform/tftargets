@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# Get the resources with -target ... for all the resources in one or more files.
+#
+# Usage:
+# terraform apply $(tftargets example.tf)
+
+grep -h resource "$@" | cut -d'"' -f2,4 | sed 's/^/-target /; s/"/./' | perl -e '@targets=<>; chomp(@targets); print join " ", @targets;'
