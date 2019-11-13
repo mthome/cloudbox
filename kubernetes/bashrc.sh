@@ -11,10 +11,14 @@ function kgpn {
 
 function krsh {
   if [ -z "$1" ]; then
-    echo "Usage: krsh <appselector>"
+    echo "Usage: krsh <node appselector> [<containername>]"
     echo "Kubernetes Run SH"
     return 1
   else
-    kubectl exec -it $(kgpn $1) -- /bin/sh
+    if [ -z "$2" ]; then
+      kubectl exec -it $(kgpn $1) -- /bin/sh
+    else
+      kubectl exec -it $(kgpn $1) -c "$2" -- /bin/sh
+    fi
   fi
 }
