@@ -22,3 +22,21 @@ function krsh {
     fi
   fi
 }
+
+function rmpod {
+  if [ -z "$1" ]; then
+    echo "Usage: rmpod <podname>"
+    echo "  alias for kubectl delete --force --grace-period=0 pod <podname>"
+    return 1
+  else
+    kubectl delete --force --grace-period=0 pod $1
+  fi
+}
+
+function gcpods {
+  kubectl get pod --field-selector=status.phase==Succeeded
+  echo "about to delete the above pods"
+  sleep 5
+  kubectl delete pod --field-selector=status.phase==Succeeded
+}
+
