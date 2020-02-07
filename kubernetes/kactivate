@@ -1,0 +1,43 @@
+#!/bin/bash
+# requires jq
+
+TENANT="$1"
+CLUSTER="$2"
+
+if [ -z "${TENANT}" -o -z "${CLUSTER}" ]; then
+    echo "Usage: kactivate tenant cluster"
+    echo "start a bash shell configured to connect to a cloud-resident kubernetes cluster for a particular tenant"
+    exit 1
+fi
+
+
+DOTKLU=${HOME}/.klusters.js
+if [ ! -e ${DOTKLU} ]; then
+    echo "Cannot find klusters database: ${DOTKLU}"
+    exit 1
+fi 
+
+PPROJECT=$(cat ${DOTKLU} | jq -r ".${TENANT}.project")
+PCLUSTER=$(cat ${DOTKLU} | jq -r ".${TENANT}.clusters.${CLUSTER}.cluster")
+PZONE=$(cat ${DOTKLU} | jq -r ".${TENANT}.clusters.${CLUSTER}.zone")
+
+# we assume the clusters in the same tenant should live in the same .kube dir
+export KUBECONFIG=${HOME}/.kube_${TENANT}
+mkdir -p ${HOME}/${KUBECONFIG}
+#this auth information will be directed to $KUBECONFIG...
+gcloud container clusters get-credentials ${PCLUSTER} --zone ${PZONE} --project ${PPROJECT}
+
+INITFILE=/tmp/vinit$$.sh
+GREEN="\[$(tput setaf 2)\]"
+RESET="\[$(tput sgr0)\]"
+cat <<EOF > ${INITFILE}
+PS1="${GREEN}${TENANT} ${CLUSTER}${RESET} \u\$ "
+EOF
+
+# magic incantation to find the directory this script is in
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+cat ${DIR}/bashrc.sh >> ${INITFILE}
+
+bash --init-file ${INITFILE}
+
+rm -f ${INITFILE}
