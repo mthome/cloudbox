@@ -22,8 +22,8 @@ PCLUSTER=$(cat ${DOTKLU} | jq -r ".${TENANT}.clusters.${CLUSTER}.cluster")
 PZONE=$(cat ${DOTKLU} | jq -r ".${TENANT}.clusters.${CLUSTER}.zone")
 
 # we assume the clusters in the same tenant should live in the same .kube dir
-export KUBECONFIG=${HOME}/.kube_${TENANT}
-mkdir -p ${HOME}/${KUBECONFIG}
+export KUBECONFIG=${HOME}/.kube_${TENANT}_${CLUSTER}
+touch ${HOME}/${KUBECONFIG}
 #this auth information will be directed to $KUBECONFIG...
 gcloud container clusters get-credentials ${PCLUSTER} --zone ${PZONE} --project ${PPROJECT}
 
