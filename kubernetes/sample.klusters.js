@@ -6,7 +6,7 @@
 		"cluster": "cde-cluster",
 		    "zone": "us-central1-a"
 		    },
-		"telphony": {
+		"telephony": {
 		    "cluster": "telephony-cluster",
 			"zone": "us-central1-a"
 			}
