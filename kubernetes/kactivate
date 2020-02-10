@@ -1,43 +1,64 @@
-#!/bin/bash
-# requires jq
+#!/usr/bin/env python3
+# really wants python 3.7+
 
-TENANT="$1"
-CLUSTER="$2"
+import argparse
+import os
+import sys
+from pathlib import Path
+import subprocess
+import tempfile
+import json
 
-if [ -z "${TENANT}" -o -z "${CLUSTER}" ]; then
-    echo "Usage: kactivate tenant cluster"
-    echo "start a bash shell configured to connect to a cloud-resident kubernetes cluster for a particular tenant"
-    exit 1
-fi
+DEFAULT_DB=str(Path.home() / '.klusters.js')
+
+class Activator:
+    def __init__(self, tenant, cluster):
+        self.tenant = tenant
+        self.cluster = cluster
+        
+        self.mydir = os.path.dirname(os.path.abspath(__file__)) #we use this to find bashrc.sh
+        self.home = Path.home()
+        self.dotklu = Path(os.getenv('KACTIVATE', DEFAULT_DB))
+        if not self.dotklu.exists():
+            print(f'kactivate database {self.dotklu} doesn\'t exist')
+            sys.exit(1)
+
+    def go(self):
+        with self.dotklu.open() as db:
+            stuff = json.load(db)
+            t = stuff[self.tenant]
+            self.kproject = t['project']
+            cs = t['clusters'][self.cluster]
+            self.kzone = cs['zone']
+            self.kluster = cs['cluster']
+        _, tmpfile = tempfile.mkstemp()
+        try:
+            self.make_dotbashrc(Path(tmpfile))
+            subprocess.call(['/bin/bash', '--init-file', tmpfile])
+        finally:
+            os.remove(tmpfile)
+            
+
+    def make_dotbashrc(self, p):
+        with p.open('w') as out:
+            out.write(f'export KUBECONFIG={self.home}/.kube_{self.tenant}_{self.cluster}\n')
+            out.write(f'touch $HOME/$KUBECONFIG\n')
+            out.write(f'gcloud container clusters get-credentials {self.kluster} --zone {self.kzone} --project {self.kproject}\n')
+            out.write('GREEN="\[$(tput setaf 2)\]"\n')
+            out.write('RESET="\[$(tput sgr0)\]"\n')
+            out.write(f'PS1="${{GREEN}}{self.tenant} {self.cluster}${{RESET}} \W\$ "\n')
+            # add the contents of the bashrc from the cwd of the script
+            with (Path(self.mydir)/'bashrc.sh').open() as inf:
+                out.writelines(inf.readlines())
+            
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='start a local shell configured to connect to a GKE cluster in a specific tenant project')
+    parser.add_argument('tenant', help='which tenant to connect to')
+    parser.add_argument('cluster', help='which cluster in the tenant to connect to')
+
+    args = parser.parse_args()
+    activator = Activator(args.tenant, args.cluster)
+    activator.go()
 
 
-DOTKLU=${HOME}/.klusters.js
-if [ ! -e ${DOTKLU} ]; then
-    echo "Cannot find klusters database: ${DOTKLU}"
-    exit 1
-fi 
-
-PPROJECT=$(cat ${DOTKLU} | jq -r ".${TENANT}.project")
-PCLUSTER=$(cat ${DOTKLU} | jq -r ".${TENANT}.clusters.${CLUSTER}.cluster")
-PZONE=$(cat ${DOTKLU} | jq -r ".${TENANT}.clusters.${CLUSTER}.zone")
-
-# we assume the clusters in the same tenant should live in the same .kube dir
-export KUBECONFIG=${HOME}/.kube_${TENANT}_${CLUSTER}
-touch ${HOME}/${KUBECONFIG}
-#this auth information will be directed to $KUBECONFIG...
-gcloud container clusters get-credentials ${PCLUSTER} --zone ${PZONE} --project ${PPROJECT}
-
-INITFILE=/tmp/vinit$$.sh
-GREEN="\[$(tput setaf 2)\]"
-RESET="\[$(tput sgr0)\]"
-cat <<EOF > ${INITFILE}
-PS1="${GREEN}${TENANT} ${CLUSTER}${RESET} \u\$ "
-EOF
-
-# magic incantation to find the directory this script is in
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-cat ${DIR}/bashrc.sh >> ${INITFILE}
-
-bash --init-file ${INITFILE}
-
-rm -f ${INITFILE}
