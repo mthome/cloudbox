@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+#-*- mode: python; -*-
+
+# this manages the database that kactivate uses
+
+# really wants python 3.7+
+
+import argparse
+import os
+import sys
+from pathlib import Path
+import subprocess
+import tempfile
+import json
+import re
+
+DEFAULT_DB=str(Path.home() / '.klusters.js')
+
+class Kdb:
+    def __init__(self):
+        self.home = Path.home()
+        self.dotklu = Path(os.getenv('KACTIVATE', DEFAULT_DB))
+
+    def import_from_gcloud(self):
+        newdb = dict()
+        projects_json = json.loads(subprocess.check_output(['gcloud', 'projects', 'list', '--format=json']))
+        print(f'searching {len(projects_json)} projects')
+        for pid in [p['projectId'] for p in projects_json]:
+            m = re.fullmatch('ce-avoke-(.*)-(\d+)', pid)
+            if m:
+                tenant_name = m.group(1)
+                m = re.fullmatch('(.*)-prod', tenant_name)
+                if m:
+                    tenant_name = m.group(1)
+                m = re.fullmatch('tenant-(.*)', tenant_name)
+                if m:
+                    tenant_name = m.group(1)
+
+                #print(f'getting information on project {pid}')
+                # see if we have a better tenant name
+                try:
+                    descrj = json.loads(subprocess.check_output(['gcloud', 'compute', 'project-info', 'describe', f'--project={pid}','--format=json', '--quiet']))
+                    metas = descrj['commonInstanceMetadata']['items']
+                    for meta in metas:
+                        if meta['key'] == 'avoke_browser':
+                            v = meta['value']
+                            m = re.fullmatch('(.*)\.cb\.avoke\.com', v)
+                            if m:
+                                tenant_name = m.group(1)
+                            else:
+                                tenant_name = v 
+                            #print(f'Aliasing project {pid} as {tenant_name}')
+                            break
+                except:
+                    # skip the renaming if we can't get it
+                    pass
+
+                print(f'{pid} will be aliased as {tenant_name}')
+
+                cjs = json.loads(subprocess.check_output(['gcloud', 'container', 'clusters', 'list', f'--project={pid}','--format=json']))
+                cs = dict()
+                for cj in cjs:
+                    cname = cj['name']
+                    czone = cj['zone']
+                    m = re.fullmatch('(.*)-cluster', cname)
+                    if m:
+                        cluster_name = m.group(1)
+                        #print(f'Found {tenant_name} {cluster_name} is {pid} {cname} {czone}')
+                        cs[cluster_name] = {'cluster':cname,'zone':czone}
+                if len(cs)>0:
+                    if tenant_name in newdb:
+                        print(f'Ambiguous name {tenant_name} for {pid}')
+                    else:
+                        newdb[tenant_name]={'project':pid,'clusters':cs}
+        # merge with old database
+        if self.dotklu.exists():
+            with self.dotklu.open() as inf:
+                olddb = json.load(inf)
+                for ten in olddb.keys():
+                    if not ten in newdb:  # if the tenant isn't already in newdb then merge
+                        p = olddb[ten]['project']
+                        # look for a tenant in newdb with a matching project
+                        found = False
+                        newkeys = list(newdb.keys())  # copy because we might add to it
+                        for nt in newkeys:
+                            if newdb[nt]['project'] == p:
+                                found = True
+                                newdb[ten] = newdb[nt]  # keep the full tenant name as well as the alias
+                                print(f'{ten} is an alias for {p}')
+                        if not found:
+                            # if we didn't find it, just copy old to new
+                            print(f'retaining {ten}')
+                            newdb[ten] = olddb[ten]
+                    else:
+                        # the old tenant is already in the new db
+                        pass
+
+        with self.dotklu.open('w') as outf:
+            outf.write(json.dumps(newdb, sort_keys=True, indent=2, separators=(',', ': ')))
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='manage your personal db for kactivate')
+    parser.add_argument('-i', '--import_projects', help='Import (and merge) projects', action='store_true')
+
+    args = parser.parse_args()
+    kdb = Kdb()
+    if args.import_projects:
+        kdb.import_from_gcloud()
+
+
+
+
