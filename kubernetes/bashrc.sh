@@ -9,6 +9,8 @@ function kgpn {
   fi
 }
 
+# kubectl cp $(kgpn migration):/home/avokeuser/storage/prompts targetdir
+
 function krsh {
   if [ -z "$1" ]; then
     echo "Usage: krsh <node appselector> [<containername>]"
