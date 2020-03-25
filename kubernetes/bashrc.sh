@@ -25,6 +25,25 @@ function krsh {
   fi
 }
 
+function kpf {
+  if [ -z "$2" ]; then
+    echo "Usage: krsh <node appselector> PORT"
+    echo "port forware localhost PORT to pod PORT"
+    return 1
+  else
+    kubectl port-forward $(kgpn $1) "$2"
+  fi
+}
+
+function pfqueue {
+  kubectl port-forward $(kgpn 'queue') 8161
+}
+
+function pfsolr {
+  kubectl port-forward $(kgpn 'solr') 8983
+}
+
+
 function rmpod {
   if [ -z "$1" ]; then
     echo "Usage: rmpod <podname>"
