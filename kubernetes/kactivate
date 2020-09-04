@@ -43,7 +43,7 @@ class Activator:
     def make_dotbashrc(self, p):
         with p.open('w') as out:
             out.write(f'export KUBECONFIG={self.home}/.kube_{self.tenant}_{self.cluster}\n')
-            out.write(f'touch $HOME/$KUBECONFIG\n')
+            out.write(f'touch $KUBECONFIG\n')
             out.write(f'gcloud container clusters get-credentials {self.kluster} --zone {self.kzone} --project {self.kproject}\n')
             out.write('GREEN="\[$(tput setaf 2)\]"\n')
             out.write('RESET="\[$(tput sgr0)\]"\n')

@@ -1,3 +1,5 @@
+export BASH_SILENCE_DEPRECATION_WARNING=1
+
 function kgpn {
   if [ -z "$1" ]; then
     echo "Usage: kgpn <appselector>"
@@ -61,3 +63,21 @@ function gcpods {
   kubectl delete pod --field-selector=status.phase==Succeeded
 }
 
+function gcfailed {
+  kubectl get pod --field-selector=status.phase==Failed
+  echo "about to delete the above pods"
+  sleep 5
+  kubectl delete pod --field-selector=status.phase==Failed
+}
+
+function rerunjob {
+    if [ -z "$1" ]; then
+	echo "Usage: rerunjob <podname>"
+	return 1
+    else
+	f=/tmp/pod_$$.json
+	echo "in case of emergency, the pod spec is in $f"
+	kubectl get job provdb -o json > $f
+	cat $f | jq 'del(.spec.selector)' | jq 'del(.spec.template.metadata.labels)' | kubectl replace --force -f -
+    fi
+}
