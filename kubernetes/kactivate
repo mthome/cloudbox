@@ -44,9 +44,12 @@ class Activator:
         with p.open('w') as out:
             out.write(f'export KUBECONFIG={self.home}/.kube_{self.tenant}_{self.cluster}\n')
             out.write(f'touch $KUBECONFIG\n')
-            out.write(f'gcloud container clusters get-credentials {self.kluster} --zone {self.kzone} --project {self.kproject}\n')
+            out.write(f'echo gcloud container clusters get-credentials {self.kluster} --zone {self.kzone} --project {self.kproject}\n')            
+            #out.write(f'gcloud container clusters get-credentials {self.kluster} --verbosity=debug --zone {self.kzone} --project {self.kproject}\n')
+            out.write(f'gcloud container clusters get-credentials {self.kluster} --zone {self.kzone} --project {self.kproject} || exit\n')
             out.write('GREEN="\[$(tput setaf 2)\]"\n')
             out.write('RESET="\[$(tput sgr0)\]"\n')
+            out.write('TENANT="'+(self.tenant.replace("-","_"))+'"\n')
             out.write(f'PS1="${{GREEN}}{self.tenant} {self.cluster}${{RESET}} \W\$ "\n')
             # add the contents of the bashrc from the cwd of the script
             with (Path(self.mydir)/'bashrc.sh').open() as inf:
