@@ -1,5 +1,46 @@
 export BASH_SILENCE_DEPRECATION_WARNING=1
 
+# we get the following from kactivate
+# KTENANT=acme-foo
+# TENANT=acme_foo (this should really be the in-cluster name of the tenant)
+# KCLUSTER=cde
+
+export CLOUDSDK_ACTIVE_CONFIG_NAME=${KTENANT}
+export KUBECONFIG=${HOME}/.kube_${KTENANT}_${KCLUSTER}
+touch ${KUBECONFIG}
+
+GREEN="\[$(tput setaf 2)\]"
+RESET="\[$(tput sgr0)\]"
+PS1="${GREEN}${KTENANT}${RESET} \W\$ "
+
+
+function kauth {
+    if gcloud container clusters get-credentials ${KKLUSTER} --zone ${KZONE} --project ${KPROJECT}; then
+	echo authorized
+    else
+	echo
+	echo
+	echo "run 'klogin <accountname>' to authorize"
+    fi
+}
+
+function klogin {
+    if [ -z "$1" ]; then
+	echo "Usage: klogin <username>"
+	return 1
+    else
+	if gcloud config set account $1 ; then
+	    kauth
+	else
+	    echo "well that didn't work.  try again"
+	    return 1
+	fi
+    fi
+}
+
+
+
+
 function kgpn {
   if [ -z "$1" ]; then
     echo "Usage: kgpn <appselector>"
@@ -81,3 +122,7 @@ function rerunjob {
 	cat $f | jq 'del(.spec.selector)' | jq 'del(.spec.template.metadata.labels)' | kubectl replace --force -f -
     fi
 }
+
+# authorize me!
+kauth
+

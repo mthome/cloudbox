@@ -7,6 +7,7 @@ import os
 import sys
 from pathlib import Path
 import subprocess
+from subprocess import DEVNULL
 import tempfile
 import json
 
@@ -32,25 +33,36 @@ class Activator:
             cs = t['clusters'][self.cluster]
             self.kzone = cs['zone']
             self.kluster = cs['cluster']
+
         _, tmpfile = tempfile.mkstemp()
+        self.check_config()
         try:
             self.make_dotbashrc(Path(tmpfile))
             subprocess.call(['/bin/bash', '--init-file', tmpfile])
         finally:
             os.remove(tmpfile)
-            
+
+    def check_config(self):
+        #r = subprocess.run(['gcloud', 'config', 'configurations', 'describe', self.tenant, '--quiet'], stdout=DEVNULL, stderr=DEVNULL)
+        r = subprocess.run(['gcloud', 'config', 'configurations', 'describe', self.tenant], stdout=DEVNULL, stderr=DEVNULL)
+        if (r.returncode != 0):  # no configuration, we need to create it
+            # gcloud config configurations create
+            #r = subprocess.run(['gcloud', 'config', 'configurations', 'create', self.tenant, '--quiet', '--no-activate'], stdout=DEVNULL, stderr=DEVNULL)
+            r = subprocess.run(['gcloud', 'config', 'configurations', 'create', self.tenant, '--no-activate'], stdout=DEVNULL, stderr=DEVNULL)
+            if (r != 0):
+                print("Couldn't create "+self.tenant+" configuration")
+                sys.exit(-1)
 
     def make_dotbashrc(self, p):
         with p.open('w') as out:
-            out.write(f'export KUBECONFIG={self.home}/.kube_{self.tenant}_{self.cluster}\n')
-            out.write(f'touch $KUBECONFIG\n')
-            out.write(f'echo gcloud container clusters get-credentials {self.kluster} --zone {self.kzone} --project {self.kproject}\n')            
-            #out.write(f'gcloud container clusters get-credentials {self.kluster} --verbosity=debug --zone {self.kzone} --project {self.kproject}\n')
-            out.write(f'gcloud container clusters get-credentials {self.kluster} --zone {self.kzone} --project {self.kproject} || exit\n')
-            out.write('GREEN="\[$(tput setaf 2)\]"\n')
-            out.write('RESET="\[$(tput sgr0)\]"\n')
-            out.write('TENANT="'+(self.tenant.replace("-","_"))+'"\n')
-            out.write(f'PS1="${{GREEN}}{self.tenant} {self.cluster}${{RESET}} \W\$ "\n')
+            # info passing to the subshell
+            out.write(f'export KCLUSTER={self.cluster}\n')            
+            out.write('export KTENANT="'+(self.tenant)+'"\n')
+            out.write('export KKLUSTER="'+(self.kluster)+'"\n')
+            out.write('export KZONE="'+(self.kzone)+'"\n')
+            out.write('export KPROJECT="'+(self.kproject)+'"\n')
+            out.write('export TENANT="'+(self.tenant.replace("-","_"))+'"\n')
+            
             # add the contents of the bashrc from the cwd of the script
             with (Path(self.mydir)/'bashrc.sh').open() as inf:
                 out.writelines(inf.readlines())
