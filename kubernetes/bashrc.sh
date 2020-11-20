@@ -13,6 +13,26 @@ GREEN="\[$(tput setaf 2)\]"
 RESET="\[$(tput sgr0)\]"
 PS1="${GREEN}${KTENANT}${RESET} \W\$ "
 
+function khelp {
+    echo ""
+    echo "klogin <account>                   # tell the environment what account to use"
+    echo "kssh <vmname>                      # get an ssh on the named VM"
+    echo "kgpn <selector>                    # get pod name(s) for selector"
+    echo "krsh <selector> [<container>]      # get a shell on a kubernetes container"
+    echo "kpf <selector> <port>              # forward localhost port to pod port"
+    echo "pfqueue                            # alias for kpf \$(kgpn queue) 8161"
+    echo "pfsolr                             # alias for kpf \$(kgpn solr) 8983"
+    echo "rmpod <name>                       # delete a named pod"
+    echo "gcpods                             # delete old Succeeded pods/jobs"
+    echo "gcfailed                           # delete old Failed pods/jobs"
+    echo "rerunjob <podname>                 # rerun a pod (e.g. a job)"
+    echo ""
+    echo "Environment variables:"
+    echo "TENANT=${TENANT}"
+    echo "KTENANT=${KTENANT}"
+    echo "KPROJECT=${KPROJECT}"
+    echo "KZONE=${KZONE}"
+}
 
 function kauth {
     if gcloud container clusters get-credentials ${KKLUSTER} --zone ${KZONE} --project ${KPROJECT}; then
@@ -38,7 +58,15 @@ function klogin {
     fi
 }
 
-
+function kssh {
+    if [ -z "$1" ]; then
+	echo "Usage: kssh vnname"
+	return 1
+    else
+	gcloud beta compute ssh $1 --project ${KPROJECT} --zone ${KZONE}
+    fi
+}
+    
 
 
 function kgpn {
@@ -71,7 +99,7 @@ function krsh {
 function kpf {
   if [ -z "$2" ]; then
     echo "Usage: krsh <node appselector> PORT"
-    echo "port forware localhost PORT to pod PORT"
+    echo "port forward localhost PORT to pod PORT"
     return 1
   else
     kubectl port-forward $(kgpn $1) "$2"
