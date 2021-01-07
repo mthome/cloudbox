@@ -13,101 +13,138 @@ import subprocess
 import tempfile
 import json
 import re
+import sqlite3
 
-DEFAULT_DB=str(Path.home() / '.klusters.js')
+DEFAULT_DB=str(Path.home() / '.cloudbox.sqlite3')
 
 class Kdb:
     def __init__(self):
         self.home = Path.home()
-        self.dotklu = Path(os.getenv('KACTIVATE', DEFAULT_DB))
+        self.dotklu = Path(os.getenv('CLOUDBOXDB', DEFAULT_DB))
+
+    def check_db(self):
+        self.con = sqlite3.connect(self.dotklu)
+        cur = self.con.cursor()
+        cur.execute("""
+CREATE TABLE IF NOT EXISTS projects (
+        pid text PRIMARY KEY,
+        name text,
+        pnum text,
+        browser text,
+        environment text,
+        legal text,
+        owner text,
+        stage text)""")
+        
+        cur.execute("""
+CREATE TABLE IF NOT EXISTS aliases (
+        name text PRIMARY KEY,
+        project text NOT NULL,
+        FOREIGN KEY (project) REFERENCES projects (pid))""")
+
+        cur.execute("""
+CREATE TABLE IF NOT EXISTS clusters (
+        project text NOT NULL,
+        name text NOT NULL,
+        zone text NOT NULL,
+        url text,
+        PRIMARY KEY (project,name),
+        FOREIGN KEY (project) REFERENCES projects (pid))""")
+        
+        return cur
 
     def import_from_gcloud(self):
-        newdb = dict()
+        cur = self.check_db()
+        
+        projects = []
+
+        # gcloud projects list --format="json(projectId,name, labels)" --filter=labels.owner=avoke
         projects_json = json.loads(subprocess.check_output(['gcloud', 'projects', 'list', '--format=json']))
         print(f'searching {len(projects_json)} projects')
-        for pid in [p['projectId'] for p in projects_json]:
-            m = re.fullmatch('ce-avoke-(.*)-(\d+)', pid)
-            if m:
-                tenant_name = m.group(1)
-                m = re.fullmatch('(.*)-prod', tenant_name)
+        psql = """INSERT OR REPLACE INTO projects (pid, name, pnum, browser, environment, legal, owner, stage) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"""
+        asql = """INSERT OR REPLACE INTO aliases (name, project) VALUES (?, ?)"""
+        csql = """INSERT OR REPLACE INTO clusters (project, name, zone, url) VALUES (?, ?, ?, ?)"""
+        for p in projects_json:
+            if p['lifecycleState'] != 'ACTIVE':
+                continue
+
+            pid = p['projectId']
+            name = p['name']
+            pnum = p['projectNumber']
+            labels = p.get('labels',{}) 
+            browser = labels.get('browser', '')
+            environment = labels.get('environment', '')
+            legal = labels.get('legal-entity', '')
+            owner = labels.get('owner', '')
+            stage = labels.get('stage', '')
+                
+            if owner != 'avoke':
+                if pid.startswith('ce-avoke'):
+                    print(f'{pid} is not owned by avoke. correcting')
+                    owner = 'avoke'
+                else:
+                    print(f'ignoring {pid}')
+                    continue
+                
+            alias = browser
+            if alias == '':
+                m = re.fullmatch('ce-avoke-(.*)-(\d+)', pid)
                 if m:
-                    tenant_name = m.group(1)
-                m = re.fullmatch('tenant-(.*)', tenant_name)
+                    alias = m.group(1)
+                m = re.fullmatch('(.*)-prod', alias)
                 if m:
-                    tenant_name = m.group(1)
+                    alias = m.group(1)
+                m = re.fullmatch('tenant-(.*)', alias)
+                if m:
+                    alias = m.group(1)
+                #print(f'computing alias={alias} for {pid}')
 
-                #print(f'getting information on project {pid}')
-                # see if we have a better tenant name
-                try:
-                    descrj = json.loads(subprocess.check_output(['gcloud', 'compute', 'project-info', 'describe', f'--project={pid}','--format=json', '--quiet']))
-                    metas = descrj['commonInstanceMetadata']['items']
-                    for meta in metas:
-                        if meta['key'] == 'avoke_browser':
-                            v = meta['value']
-                            m = re.fullmatch('(.*)\.cb\.avoke\.com', v)
-                            if m:
-                                tenant_name = m.group(1)
-                            else:
-                                tenant_name = v 
-                            #print(f'Aliasing project {pid} as {tenant_name}')
-                            break
-                except:
-                    # skip the renaming if we can't get it
-                    pass
+            cur.execute(psql, (pid, name, pnum, browser, environment, legal, owner, stage))
+            #print(f'added pid={pid} name="{name}" browser={browser} stage={stage}')
+            projects.append(pid)
+            if alias != '':
+                cur.execute(asql, (alias, pid))
+                # print(f'added {alias} as alias for {pid}')
 
-                print(f'{pid} will be aliased as {tenant_name}')
+        for pid in projects:
+            cjs = json.loads(subprocess.check_output(['gcloud', 'container',
+                                                      'clusters', 'list', f'--project={pid}','--format=json']))           
+            for cj in cjs:
+                cname = cj['name']
+                czone = cj['zone']
+                slurl = cj['selfLink']
+                cur.execute(csql, (pid, cname, czone, slurl))
+                print(f'cluster={pid}/{cname} {czone}')
 
-                cjs = json.loads(subprocess.check_output(['gcloud', 'container', 'clusters', 'list', f'--project={pid}','--format=json']))
-                cs = dict()
-                for cj in cjs:
-                    cname = cj['name']
-                    czone = cj['zone']
-                    m = re.fullmatch('(.*)-cluster', cname)
-                    if m:
-                        cluster_name = m.group(1)
-                        #print(f'Found {tenant_name} {cluster_name} is {pid} {cname} {czone}')
-                        cs[cluster_name] = {'cluster':cname,'zone':czone}
-                if len(cs)>0:
-                    if tenant_name in newdb:
-                        print(f'Ambiguous name {tenant_name} for {pid}')
-                    else:
-                        newdb[tenant_name]={'project':pid,'clusters':cs}
-        # merge with old database
-        if self.dotklu.exists():
-            with self.dotklu.open() as inf:
-                olddb = json.load(inf)
-                for ten in olddb.keys():
-                    if not ten in newdb:  # if the tenant isn't already in newdb then merge
-                        p = olddb[ten]['project']
-                        # look for a tenant in newdb with a matching project
-                        found = False
-                        newkeys = list(newdb.keys())  # copy because we might add to it
-                        for nt in newkeys:
-                            if newdb[nt]['project'] == p:
-                                found = True
-                                newdb[ten] = newdb[nt]  # keep the full tenant name as well as the alias
-                                print(f'{ten} is an alias for {p}')
-                        if not found:
-                            # if we didn't find it, just copy old to new
-                            print(f'retaining {ten}')
-                            newdb[ten] = olddb[ten]
-                    else:
-                        # the old tenant is already in the new db
-                        pass
+        self.con.commit()
+                
+    def list_projects(self):
+        cur = self.check_db()
+        cur.execute("SELECT name, pid FROM projects")
+        print(f'projects:')
+        for r in cur.fetchall():
+            print(f'{r[1]}')
+        print();
+        print('aliases')
+        cur.execute("SELECT name, project FROM aliases")
+        for r in cur.fetchall():
+            print(f'{r[0]}')
 
-        with self.dotklu.open('w') as outf:
-            outf.write(json.dumps(newdb, sort_keys=True, indent=2, separators=(',', ': ')))
-
+        cur.execute("SELECT project, name, zone, url FROM clusters")
+        for p,n,z,u in cur.fetchall():
+            print(f'{p}/{n} {u}')
+        
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='manage your personal db for kactivate')
-    parser.add_argument('-i', '--import_projects', help='Import (and merge) projects', action='store_true')
+    parser.add_argument('-i', '--import_projects', help='Import projects', action='store_true')
+    parser.add_argument('-l', '--list_projects', help='List projects', action='store_true')    
 
     args = parser.parse_args()
     kdb = Kdb()
     if args.import_projects:
         kdb.import_from_gcloud()
-
-
-
+    if args.list_projects:
+        kdb.list_projects()
+    kdb.con.close()
 

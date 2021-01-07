@@ -10,8 +10,9 @@ import subprocess
 from subprocess import DEVNULL
 import tempfile
 import json
+import sqlite3
 
-DEFAULT_DB=str(Path.home() / '.klusters.js')
+DEFAULT_DB=str(Path.home() / '.cloudbox.sqlite3')
 
 class Activator:
     def __init__(self, tenant, cluster):
@@ -20,12 +21,31 @@ class Activator:
         
         self.mydir = os.path.dirname(os.path.abspath(__file__)) #we use this to find bashrc.sh
         self.home = Path.home()
-        self.dotklu = Path(os.getenv('KACTIVATE', DEFAULT_DB))
+        self.dotklu = Path(os.getenv('CLOUDBOXDB', DEFAULT_DB))
         if not self.dotklu.exists():
             print(f'kactivate database {self.dotklu} doesn\'t exist.  Try seeding with "kdb -i"')
             sys.exit(1)
 
     def go(self):
+        con = sqlite3.connect(self.dotklu)
+        cur = con.cursor()
+        # look up by alias
+        cur.execute('SELECT project FROM aliases WHERE name=?', (self.tenant,))
+        stuff = cur.fetchone()
+        if stuff is None:
+            print(f'Error: Could not find {self.tenant}')
+            sys.exit(1)
+        p = stuff[0]
+        cur.execute('SELECT name, pnum, browser FROM projects WHERE pid=?', (p,))
+        pname, pnum, browser = cur.fetchone()
+        cur.execute('SELECT zone, url FROM clusters WHERE project=? AND name=?', (p, f'{self.cluster}-cluster'))
+        czone, curl = cur.fetchone()
+
+        self.kproject = p
+        self.kzone = czone
+        self.kluster = f'{self.cluster}-cluster'
+
+        """
         with self.dotklu.open() as db:
             stuff = json.load(db)
             t = stuff[self.tenant]
@@ -33,6 +53,7 @@ class Activator:
             cs = t['clusters'][self.cluster]
             self.kzone = cs['zone']
             self.kluster = cs['cluster']
+        """
 
         _, tmpfile = tempfile.mkstemp()
         self.check_config()
