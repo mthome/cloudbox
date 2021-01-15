@@ -146,7 +146,7 @@ function rerunjob {
     else
 	f=/tmp/pod_$$.json
 	echo "in case of emergency, the pod spec is in $f"
-	kubectl get job provdb -o json > $f
+	kubectl get job $1 -o json > $f
 	cat $f | jq 'del(.spec.selector)' | jq 'del(.spec.template.metadata.labels)' | kubectl replace --force -f -
     fi
 }
