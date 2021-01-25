@@ -3,7 +3,6 @@
 
 # this manages the database that kactivate uses
 
-# really wants python 3.7+
 
 import argparse
 import os
@@ -14,6 +13,10 @@ import tempfile
 import json
 import re
 import sqlite3
+
+# really wants python 3.7+
+MIN_PYTHON = (3, 7)
+assert sys.version_info >= MIN_PYTHON, f"requires Python {'.'.join([str(n) for n in MIN_PYTHON])} or newer"
 
 DEFAULT_DB=str(Path.home() / '.cloudbox.sqlite3')
 
@@ -133,12 +136,36 @@ CREATE TABLE IF NOT EXISTS clusters (
         cur.execute("SELECT project, name, zone, url FROM clusters")
         for p,n,z,u in cur.fetchall():
             print(f'{p}/{n} {u}')
+
+    def add_alias(self, arg):
+        (alias, old) = arg.split('=')
+        cur = self.check_db()
+
+        project = None
+        
+        # is it a project name?
+        cur.execute('SELECT pid FROM projects WHERE pid=?', (old,))
+        stuff = cur.fetchone()
+        if stuff is not None:
+            project = stuff[0]
+        else:
+            cur.execute('SELECT project FROM aliases WHERE name=?', (old,))
+            stuff = cur.fetchone()
+            if stuff is not None:
+                project = stuff[0]
+            else:
+                print(f'Could not find project identified by {old}')
+                sys.exit(1)
+        cur.execute('INSERT OR REPLACE INTO aliases (name, project) VALUES (?, ?)', (alias, project))
+        self.con.commit()
+        print(f'adding local alias "{alias}" to project "{project}"')
         
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='manage your personal db for kactivate')
     parser.add_argument('-i', '--import_projects', help='Import projects', action='store_true')
-    parser.add_argument('-l', '--list_projects', help='List projects', action='store_true')    
+    parser.add_argument('-l', '--list_projects', help='List projects', action='store_true')
+    parser.add_argument('-a', '--alias', help='add an alias, e.g "--alias newalias=oldaliasorproject')
 
     args = parser.parse_args()
     kdb = Kdb()
@@ -146,5 +173,7 @@ if __name__ == "__main__":
         kdb.import_from_gcloud()
     if args.list_projects:
         kdb.list_projects()
+    if args.alias is not None:
+        kdb.add_alias(args.alias)
     kdb.con.close()
 
