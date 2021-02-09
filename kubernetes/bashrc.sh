@@ -23,8 +23,9 @@ function khelp {
     echo "pfqueue                            # alias for kpf \$(kgpn queue) 8161"
     echo "pfsolr                             # alias for kpf \$(kgpn solr) 8983"
     echo "rmpod <name>                       # delete a named pod"
-    echo "gcpods                             # delete old Succeeded pods/jobs"
-    echo "gcfailed                           # delete old Failed pods/jobs"
+    echo "gcpods                             # delete old Succeeded pods"
+    echo "gcfailedpods                       # delete old Failed pods"
+    echo "gcjobs                             # delete old jobs"
     echo "rerunjob <podname>                 # rerun a pod (e.g. a job)"
     echo ""
     echo "Environment variables:"
@@ -58,6 +59,7 @@ function klogin {
     fi
 }
 
+# like krsh, except for VMs
 function kssh {
     if [ -z "$1" ]; then
 	echo "Usage: kssh vnname"
@@ -132,12 +134,20 @@ function gcpods {
   kubectl delete pod --field-selector=status.phase==Succeeded
 }
 
-function gcfailed {
+function gcfailedpods {
   kubectl get pod --field-selector=status.phase==Failed
   echo "about to delete the above pods"
   sleep 5
   kubectl delete pod --field-selector=status.phase==Failed
 }
+
+function gcjobs {
+  kubectl get jobs --field-selector status.successful=1 
+  echo "about to delete the above jobs"
+  sleep 5
+  kubectl delete jobs --field-selector status.successful=1 
+}
+
 
 function rerunjob {
     if [ -z "$1" ]; then

@@ -123,16 +123,19 @@ CREATE TABLE IF NOT EXISTS clusters (
                 
     def list_projects(self):
         cur = self.check_db()
-        cur.execute("SELECT name, pid FROM projects")
+        cur.execute("SELECT name, pid, browser FROM projects")
         print(f'projects:')
         for r in cur.fetchall():
-            print(f'{r[1]}')
+            print(f'{r[0]} {r[1]} {r[2]}')
+            
         print();
-        print('aliases')
+        print('aliases:')
         cur.execute("SELECT name, project FROM aliases")
         for r in cur.fetchall():
             print(f'{r[0]}')
-
+            
+        print();
+        print('clusters:')
         cur.execute("SELECT project, name, zone, url FROM clusters")
         for p,n,z,u in cur.fetchall():
             print(f'{p}/{n} {u}')
