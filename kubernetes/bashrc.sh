@@ -25,6 +25,7 @@ function khelp {
     echo "rmpod <name>                       # delete a named pod"
     echo "gcpods                             # delete old Succeeded pods"
     echo "gcfailedpods                       # delete old Failed pods"
+    echo "gcevictedpods                      # delete old Evicted pods"
     echo "gcjobs                             # delete old jobs"
     echo "rerunjob <podname>                 # rerun a pod (e.g. a job)"
     echo ""
@@ -100,7 +101,7 @@ function krsh {
 
 function kpf {
   if [ -z "$2" ]; then
-    echo "Usage: krsh <node appselector> PORT"
+    echo "Usage: kpf <node appselector> PORT"
     echo "port forward localhost PORT to pod PORT"
     return 1
   else
@@ -139,6 +140,13 @@ function gcfailedpods {
   echo "about to delete the above pods"
   sleep 5
   kubectl delete pod --field-selector=status.phase==Failed
+}
+
+function gcevictededpods {
+  kubectl get pod --field-selector=status.phase==Evicted
+  echo "about to delete the above pods"
+  sleep 5
+  kubectl delete pod --field-selector=status.phase==Evicted
 }
 
 function gcjobs {
