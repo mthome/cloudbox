@@ -110,7 +110,7 @@ function kpf {
 }
 
 function pfqueue {
-  kubectl port-forward $(kgpn 'queue') 8161
+  kubectl port-forward $(kgpn 'queue') 8161 61616
 }
 
 function pfsolr {
