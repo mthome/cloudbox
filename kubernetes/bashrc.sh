@@ -20,6 +20,7 @@ function khelp {
     echo "kgpn <selector>                    # get pod name(s) for selector"
     echo "krsh <selector> [<container>]      # get a shell on a kubernetes container"
     echo "kpf <selector> <port>              # forward localhost port to pod port"
+    echo "klog <selector>                    # show logs for container"
     echo "pfqueue                            # alias for kpf \$(kgpn queue) 8161"
     echo "pfsolr                             # alias for kpf \$(kgpn solr) 8983"
     echo "rmpod <name>                       # delete a named pod"
@@ -69,8 +70,6 @@ function kssh {
 	gcloud beta compute ssh $1 --project ${KPROJECT} --zone ${KZONE}
     fi
 }
-    
-
 
 function kgpn {
   if [ -z "$1" ]; then
@@ -97,6 +96,29 @@ function krsh {
       kubectl exec -it $(kgpn $1) -c "$2" -- /bin/sh
     fi
   fi
+}
+
+function klogs {
+    f=0
+    if [ "-f" == "$1" ]; then
+        f=1
+        shift
+    fi
+    if [ -z "$1" ]; then
+        echo "Usage: klogs [-f] <selector> [container]"
+        echo "   alias for 'kubectl logs [-f] $(kgpn selector)"
+        return 1
+    fi
+    tail=""
+    if [ ! -z "$2" ]; then
+        tail="-c $2"
+    fi
+    
+    if [ "$f" == "1" ]; then
+        kubectl logs -f $(kgpn $1) $tail
+    else
+        kubectl logs $(kgpn $1) $tail
+    fi
 }
 
 function kpf {
