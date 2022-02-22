@@ -18,7 +18,8 @@ function khelp {
     echo "klogin <account>                   # tell the environment what account to use"
     echo "kssh <vmname>                      # get an ssh on the named VM"
     echo "kgpn <selector>                    # get pod name(s) for selector"
-    echo "krsh <selector> [<container>]      # get a shell on a kubernetes container"
+    echo "krsh <selector> [<container>]      # get a shell on the named kubernetes container"
+    echo "kbash                              # fire up a new valet-based container with an interactive shell"
     echo "kpf <selector> <port>              # forward localhost port to pod port"
     echo "klog <selector>                    # show logs for container"
     echo "pfqueue                            # alias for kpf \$(kgpn queue) 8161"
@@ -96,6 +97,51 @@ function krsh {
       kubectl exec -it $(kgpn $1) -c "$2" -- /bin/sh
     fi
   fi
+}
+
+
+
+function kbash {
+    # TODO: maybe we should support running a command instead of just interactive here.
+    # we could do this with something like:
+    # arglist="\"/bin/bash\", \"-c\", \"$@\""
+    arglist="\"/bin/bash\""
+    
+
+    # get the right image to use - assume it is from remindercj, which is a valet based cronjob
+    whole=$(kubectl get cronjob remindercj --output json)
+    template=$(echo "${whole}" | jq .spec.jobTemplate.spec.template.spec.containers[0])
+    pvolumes=$(echo "${whole}" | jq .spec.jobTemplate.spec.template.spec.volumes)
+    image=$(echo "${template}" | jq -r .image)
+    penv=$(echo "${template}" | jq -r .env)
+    penvfrom=$(echo "${template}" | jq -r .envFrom)
+    pmounts=$(echo "${template}" | jq -r .volumeMounts)
+
+    # make a nice random pod podname
+    #podname="manual-$(mktemp -u XXXXXX|tr [A-Z] [a-z])"
+    podname="manual-$(openssl rand -hex 3)"
+    overrides=$(cat <<-END
+{"apiVersion": "v1",
+ "spec": { 
+   "containers": [ {
+     "name": "${podname}",
+     "args": [ ${arglist} ],
+     "image": "${image}",
+     "stdin": true,
+     "stdinOnce": true,
+     "tty": true,
+     "env": ${penv},
+     "envFrom": ${penvfrom},
+     "volumeMounts": ${pmounts}
+    } ],
+    "volumes": ${pvolumes}
+ } }
+
+END
+             )
+
+    echo "Starting pod ${podname}"
+    kubectl run -i --tty --rm ${podname} --image="${image}" --restart=Never --overrides="${overrides}"
 }
 
 function klogs {
