@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS clusters (
             legal = labels.get('legal-entity', '')
             owner = labels.get('owner', '')
             stage = labels.get('stage', '')
+            aliases = labels.get('alias', '')
                 
             if owner != 'avoke':
                 if pid.startswith('ce-avoke'):
@@ -108,6 +109,9 @@ CREATE TABLE IF NOT EXISTS clusters (
             if alias != '':
                 cur.execute(asql, (alias, pid))
                 # print(f'added {alias} as alias for {pid}')
+            if aliases != '':
+                for a in aliases.split(','):  # commas not really supported by GCP labels
+                    cur.execute(asql, (a, pid))
 
         for pid in projects:
             cjs = json.loads(subprocess.check_output(['gcloud', 'container',
