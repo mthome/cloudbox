@@ -17,6 +17,7 @@ function khelp {
     echo ""
     echo "klogin <account>                   # tell the environment what account to use"
     echo "kssh <vmname>                      # get an ssh on the named VM"
+    echo "klistvms                           # list the VMs in the project"    
     echo "kgpn <selector>                    # get pod name(s) for selector"
     echo "krsh <selector> [<container>]      # get a shell on the named kubernetes container"
     echo "kbash                              # fire up a new valet-based container with an interactive shell"
@@ -62,13 +63,17 @@ function klogin {
     fi
 }
 
+function klistvms {
+    gcloud compute instances list --project ${KPROJECT} --zone ${KZONE} --format=json | jq -r .[].name
+}
+    
 # like krsh, except for VMs
 function kssh {
     if [ -z "$1" ]; then
 	echo "Usage: kssh vnname"
 	return 1
     else
-	gcloud beta compute ssh $1 --project ${KPROJECT} --zone ${KZONE}
+	gcloud compute ssh $1 --project ${KPROJECT} --zone ${KZONE} --tunnel-through-iap
     fi
 }
 
