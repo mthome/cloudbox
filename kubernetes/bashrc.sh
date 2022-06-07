@@ -23,6 +23,7 @@ function khelp {
     echo "kbash                              # fire up a new valet-based container with an interactive shell"
     echo "kpf <selector> <port>              # forward localhost port to pod port"
     echo "klog <selector>                    # show logs for container"
+    echo "kdrachtio                          # find the running drachtio VMs"
     echo "pfqueue                            # alias for kpf \$(kgpn queue) 8161"
     echo "pfsolr                             # alias for kpf \$(kgpn solr) 8983"
     echo "rmpod <name>                       # delete a named pod"
@@ -37,6 +38,11 @@ function khelp {
     echo "KTENANT=${KTENANT}"
     echo "KPROJECT=${KPROJECT}"
     echo "KZONE=${KZONE}"
+}
+
+function kdrachtio {
+    gcloud compute instances list --project $KPROJECT --format=json | \
+        jq -r 'map(select(.status=="RUNNING"))|map(select(.name | contains("drachtiovm")))|.[].name'
 }
 
 function kauth {
