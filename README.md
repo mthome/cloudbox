@@ -13,3 +13,4 @@ Michael's (and friends') cloud scripting toolbox
 `$ kactivate qa`
 6. your shell prompt will change to indicate that you are *connected* to the cluster in question and you can run commands in context:
 `qa cde ~$ krsh browser`
+7. run khelp for options
