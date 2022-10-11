@@ -26,7 +26,7 @@ class Activator:
             print(f'kactivate database {self.dotklu} doesn\'t exist.  Try seeding with "kdb -i"')
             sys.exit(1)
 
-    def go(self):
+    def go(self, args):
         con = sqlite3.connect(self.dotklu)
         cur = con.cursor()
         # look up by alias
@@ -59,9 +59,14 @@ class Activator:
         self.check_config()
         try:
             self.make_dotbashrc(Path(tmpfile))
-            subprocess.call(['/bin/bash', '--init-file', tmpfile])
+            if args is not None:
+                subprocess.call(['/bin/bash', '-c', f'. {tmpfile}; {args}'])
+            else:
+                subprocess.call(['/bin/bash', '--init-file', tmpfile])
+                
         finally:
-            os.remove(tmpfile)
+            #os.remove(tmpfile)
+            pass
 
     def check_config(self):
         #r = subprocess.run(['gcloud', 'config', 'configurations', 'describe', self.tenant, '--quiet'], stdout=DEVNULL, stderr=DEVNULL)
@@ -92,11 +97,11 @@ class Activator:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='start a local shell configured to connect to a GKE cluster in a specific tenant project')
     parser.add_argument('tenant', help='which tenant to connect to')
-    parser.add_argument('cluster', nargs='?', help='which cluster in the tenant to connect to (default is "cde")', default='cde')
+    parser.add_argument('-c', help='commandline to have the shell run. If not supplied we run an interactive shell')
 
     args = parser.parse_args()
-    activator = Activator(args.tenant, args.cluster)
-    activator.go()
+    activator = Activator(args.tenant, 'cde')
+    activator.go(args.c)
 
 
 
