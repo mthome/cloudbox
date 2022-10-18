@@ -1,4 +1,5 @@
 export BASH_SILENCE_DEPRECATION_WARNING=1
+export USE_GKE_GCLOUD_AUTH_PLUGIN=True
 
 # we get the following from kactivate
 # KTENANT=acme-foo
