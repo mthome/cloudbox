@@ -111,15 +111,129 @@ function krsh {
   fi
 }
 
+function kupdate {
+  if [ -z "$1" ]; then
+    echo "Usage: kupdate <branch:dts.version>"
+    echo "Update everything to the specified version"
+    return 1
+  fi
 
+  targetversion=($(echo $1 |  sed 's/\([a-z0-9]*\)\:\(.*\)$/\1 \2/'))
+  echo "Updating:"
+  echo "  Branch = ${targetversion[0]}"
+  echo "  Version = ${targetversion[1]}"
+
+  # redeploy
+  # echo deployment | jq 'del(.spec.selector)' | jq 'del(.spec.template.metadata.labels)' | kubectl replace --force -f -
+  for d in $( kubectl get deployment --no-headers -o custom-columns=":metadata.name" ) ; do
+      rf="${d}-$(openssl rand -hex 3)"
+      of="/tmp/${rf}.orig.yaml"
+      nf="/tmp/${rf}.new.yaml"
+      kubectl get deployment "${d}" --output json > "${of}"
+      cp ${of} ${nf}
+      for m in $(cat $of | jq -r '.spec.template.spec.containers[].image'); do
+          # turn "us.gcr.io/ce-avoke-appdev-01/hennessy2/api:20230105.cf24f6e"
+          # into "us.gcr.io/ce-avoke-appdev-01 hennessy2 api 20230105.cf24f6e"
+          ov=($(echo ${m} | sed 's/^\(.*\)\/\([a-z0-9]*\)\/\([a-z0-9]*\)\:\(.*\)$/\1 \2 \3 \4/g'))
+          newversion="${ov[0]}/${targetversion[0]}/${ov[2]}:${targetversion[1]}"
+          echo "${m} -> ${newversion}"
+          sed -I "" "s%${m}%${newversion}%g" $nf
+      done
+      diff -u $of $nf
+      rm $of $nf
+  done
+  
+  for c in $( kubectl get cronjob --no-headers -o custom-columns=":metadata.name" ) ; do
+      echo $c
+  done
+}
 
 function kbash {
     # TODO: maybe we should support running a command instead of just interactive here.
     # we could do this with something like:
     # arglist="\"/bin/bash\", \"-c\", \"$@\""
     arglist="\"/bin/bash\""
-    
 
+    # get the right image to use - assume it is from remindercj, which is a valet based cronjob
+    whole=$(kubectl get cronjob remindercj --output json)
+    template=$(echo "${whole}" | jq .spec.jobTemplate.spec.template.spec.containers[0])
+    pvolumes=$(echo "${whole}" | jq .spec.jobTemplate.spec.template.spec.volumes)
+    image=$(echo "${template}" | jq -r .image)
+    penv=$(echo "${template}" | jq -r .env)
+    penvfrom=$(echo "${template}" | jq -r .envFrom)
+    pmounts=$(echo "${template}" | jq -r .volumeMounts)
+
+    # make a nice random pod podname
+    #podname="manual-$(mktemp -u XXXXXX|tr [A-Z] [a-z])"
+    podname="manual-$(openssl rand -hex 3)"
+    overrides=$(cat <<-END
+{"apiVersion": "v1",
+ "spec": { 
+   "containers": [ {
+     "name": "${podname}",
+     "args": [ ${arglist} ],
+     "image": "${image}",
+     "stdin": true,
+     "stdinOnce": true,
+     "tty": true,
+     "env": ${penv},
+     "envFrom": ${penvfrom},
+     "volumeMounts": ${pmounts}
+    } ],
+    "volumes": ${pvolumes}
+ } }
+
+END
+             )
+
+    echo "Starting pod ${podname}"
+    kubectl run -i --tty --rm ${podname} --image="${image}" --restart=Never --overrides="${overrides}"
+}
+
+function khack {
+    # TODO: maybe we should support running a command instead of just interactive here.
+    # we could do this with something like:
+    # arglist="\"/bin/bash\", \"-c\", \"$@\""
+    arglist="\"/bin/bash\""
+
+    # get the right image to use - assume it is from remindercj, which is a valet based cronjob
+    whole=$(kubectl get cronjob remindercj --output json)
+    template=$(echo "${whole}" | jq .spec.jobTemplate.spec.template.spec.containers[0])
+    pvolumes=$(echo "${whole}" | jq .spec.jobTemplate.spec.template.spec.volumes)
+    image="us.gcr.io/ce-avoke-appdev-01/icaco/wscr:20230912.6c33ea6"
+    penv=$(echo "${template}" | jq -r .env)
+    penvfrom=$(echo "${template}" | jq -r .envFrom)
+    pmounts=$(echo "${template}" | jq -r .volumeMounts)
+
+    # make a nice random pod podname
+    #podname="manual-$(mktemp -u XXXXXX|tr [A-Z] [a-z])"
+    podname="manual-$(openssl rand -hex 3)"
+    overrides=$(cat <<-END
+{"apiVersion": "v1",
+ "spec": { 
+   "containers": [ {
+     "name": "${podname}",
+     "args": [ ${arglist} ],
+     "image": "${image}",
+     "stdin": true,
+     "stdinOnce": true,
+     "tty": true,
+     "env": ${penv},
+     "envFrom": ${penvfrom},
+     "volumeMounts": ${pmounts}
+    } ],
+    "volumes": ${pvolumes}
+ } }
+
+END
+             )
+
+    echo "Starting pod ${podname}"
+    kubectl run -i --tty --rm ${podname} --image="${image}" --restart=Never --overrides="${overrides}"
+}
+
+
+function kstarter {
     # get the right image to use - assume it is from remindercj, which is a valet based cronjob
     whole=$(kubectl get cronjob remindercj --output json)
     template=$(echo "${whole}" | jq .spec.jobTemplate.spec.template.spec.containers[0])
@@ -246,6 +360,27 @@ function rerunjob {
 	echo "in case of emergency, the pod spec is in $f"
 	kubectl get job $1 -o json > $f
 	cat $f | jq 'del(.spec.selector)' | jq 'del(.spec.template.metadata.labels)' | kubectl replace --force -f -
+    fi
+}
+
+# 
+function setup_utility {
+    if [[ "$(kubectl get deployment utility --ignore-not-found)" == "" ]]; then
+        echo "no utility deployment.  Creating"
+        kubectl get deployment loader --output json \
+            | jq 'del(.status)' \
+            | jq 'del(.metadata)' \
+            | jq '.metadata.name="utility"' \
+            | jq '.spec.selector.matchLabels.app="utility"' \
+            | jq '.spec.template.metadata.labels.app="utility"' \
+            | jq '.spec.template.metadata.name="utility"' \
+            | jq '.spec.template.spec.containers[0].name="utility"' \
+            | jq '.spec.template.spec.containers[0].image|=sub("loader";"valet")' \
+            | jq '.spec.template.spec.containers[0].command=["/bin/bash", "-c", "--"]' \
+            | jq '.spec.template.spec.containers[0].args=["while true; do sleep 60; done;"]' \
+            | kubectl apply -f -
+    else
+        echo "utility deployment already exists"
     fi
 }
 
