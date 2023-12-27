@@ -114,14 +114,17 @@ CREATE TABLE IF NOT EXISTS clusters (
                     cur.execute(asql, (a, pid))
 
         for pid in projects:
-            cjs = json.loads(subprocess.check_output(['gcloud', 'container',
-                                                      'clusters', 'list', f'--project={pid}','--format=json']))           
-            for cj in cjs:
-                cname = cj['name']
-                czone = cj['zone']
-                slurl = cj['selfLink']
-                cur.execute(csql, (pid, cname, czone, slurl))
-                print(f'cluster={pid}/{cname} {czone}')
+            try:
+                cjs = json.loads(subprocess.check_output(['gcloud', 'container',
+                                                          'clusters', 'list', f'--project={pid}','--format=json']))           
+                for cj in cjs:
+                    cname = cj['name']
+                    czone = cj['zone']
+                    slurl = cj['selfLink']
+                    cur.execute(csql, (pid, cname, czone, slurl))
+                    print(f'cluster={pid}/{cname} {czone}')
+            except:
+                print(f'failed to grok {pid}')
 
         self.con.commit()
                 
